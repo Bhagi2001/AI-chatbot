@@ -25,20 +25,34 @@
       const message = userInput.value.trim();
       if (!message) return;
 
-      // Show user message
-      chatBox.innerHTML += `<div class="user-msg">🧑 You: ${message}</div>`;
-      userInput.value = "";
+        // Show user message
+        chatBox.innerHTML += `<div class="user-msg">🧑 You: ${message}</div>`;
+        userInput.value = "";
 
-      // Send to backend
-      const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
+        // Show a typing indicator from the bot while we wait
+        const typingId = `typing-${Date.now()}`;
+        chatBox.innerHTML += `<div class="bot-msg" id="${typingId}">🤖 Buddy: <em>typing...</em></div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+        sendBtn.disabled = true;
+        userInput.disabled = true;
 
-      const data = await res.json();
-      chatBox.innerHTML += `<div class="bot-msg">🤖 Buddy: ${data.reply}</div>`;
-      chatBox.scrollTop = chatBox.scrollHeight;
+        // Send to backend
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+
+        const data = await res.json();
+        const typingElem = document.getElementById(typingId);
+        if (typingElem) {
+          typingElem.outerHTML = `<div class="bot-msg">🤖 Buddy: ${data.reply}</div>`;
+        } else {
+          chatBox.innerHTML += `<div class="bot-msg">🤖 Buddy: ${data.reply}</div>`;
+        }
+        chatBox.scrollTop = chatBox.scrollHeight;
+        sendBtn.disabled = false;
+        userInput.disabled = false;
     }
 
     sendBtn.addEventListener("click", sendMessage);
