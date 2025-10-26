@@ -1,6 +1,7 @@
 import os
 from flask import Flask, render_template, request, jsonify
 import logging
+import os
 
 app = Flask(__name__)
 
@@ -12,6 +13,10 @@ try:
     from transformers import pipeline
 except Exception:
     transformers_available = False
+
+# OpenAI SDK will be imported dynamically inside `openai_reply` so the
+# editor won't flag a missing module at import time. At runtime we attempt
+# to import the package only if `OPENAI_API_KEY` is present.
 
 
 def init_chatbot():
@@ -48,6 +53,54 @@ def fallback_reply(user_text: str) -> str:
     return "I don't have the local AI model available. Install requirements or ask something else."
 
 
+def openai_reply(user_text: str) -> str:
+    """Call OpenAI ChatCompletion (gpt-3.5-turbo) if API key and package are available.
+
+    Returns the assistant reply text on success, or None on error/unavailable.
+    """
+    try:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return None
+
+        # Import openai dynamically so missing package doesn't trigger
+        # a static analyzer error in editors. If it's not installed, just
+        # return None and the caller will fall back.
+        try:
+            import importlib
+
+            openai = importlib.import_module("openai")
+        except Exception:
+            return None
+
+        openai.api_key = api_key
+        # Use a simple system prompt to keep replies chatty and helpful
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are Buddy, a helpful assistant."},
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=150,
+            temperature=0.7,
+        )
+        if resp and getattr(resp, "choices", None) and len(resp.choices) > 0:
+            # Newer SDKs return dict-like objects; guard access safely
+            choice = resp.choices[0]
+            # choice.message may be present (newer) or choice.get('message') for dicts
+            msg = None
+            if hasattr(choice, "message"):
+                msg = choice.message.get("content", "")
+            elif isinstance(choice, dict):
+                msg = choice.get("message", {}).get("content", "")
+            else:
+                msg = getattr(choice, "text", "")
+            return (msg or "").strip()
+    except Exception as e:
+        logging.exception("OpenAI request failed: %s", e)
+    return None
+
+
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -69,7 +122,12 @@ def chat():
             logging.exception("Error while generating with transformers: %s", e)
             # fall through to fallback reply
 
-    # fallback path (transformers not installed or failed)
+    # Next prefer OpenAI if configured
+    openai_ans = openai_reply(user_input)
+    if openai_ans is not None:
+        return jsonify({"reply": openai_ans})
+
+    # fallback path (transformers & OpenAI not available or failed)
     bot_reply = fallback_reply(user_input)
     return jsonify({"reply": bot_reply})
 

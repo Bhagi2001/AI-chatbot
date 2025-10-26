@@ -29,3 +29,22 @@ Troubleshooting
 ```powershell
 python -c "import transformers; print(transformers.__version__)"
 ```
+
+OpenAI integration
+
+To enable OpenAI as a fallback provider (useful if you don't want to run local models), do the following:
+
+1. Install the Python package (already added to `requirements.txt`):
+
+```powershell
+pip install -r requirements.txt
+```
+
+2. Set your OpenAI API key in the environment before running the app (PowerShell):
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+python main.py
+```
+
+When `OPENAI_API_KEY` is present and the `openai` package is available, the server will call OpenAI (gpt-3.5-turbo) to generate replies. If neither local transformers nor OpenAI are available, the app uses a small local fallback responder so the UI remains usable.
