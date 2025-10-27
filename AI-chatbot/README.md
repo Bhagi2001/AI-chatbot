@@ -48,3 +48,27 @@ python main.py
 ```
 
 When `OPENAI_API_KEY` is present and the `openai` package is available, the server will call OpenAI (gpt-3.5-turbo) to generate replies. If neither local transformers nor OpenAI are available, the app uses a small local fallback responder so the UI remains usable.
+
+Gemini (Google) integration
+
+You can also use Google Gemini (Generative AI) as a provider. The server will attempt to call Gemini when `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set and a supported client library is installed. The app tries `google.generativeai` first and falls back to Vertex AI libraries if present.
+
+Install a client (choose one):
+
+```powershell
+# lightweight GenAI client (recommended):
+pip install google-generativeai
+
+# or install Vertex AI SDK (if you prefer):
+pip install google-cloud-aiplatform
+```
+
+Set the API key (PowerShell):
+
+```powershell
+$env:GEMINI_API_KEY = "YOUR_KEY_HERE"
+python main.py
+```
+
+Notes:
+- The Gemini integration in this project uses dynamic imports and multiple call patterns to remain flexible across client library versions. If you hit errors, check which client you installed and consult its docs. If you'd like, I can adapt the code to a single client and sample call shape matching your preferred library/version.

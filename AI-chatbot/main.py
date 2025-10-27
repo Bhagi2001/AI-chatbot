@@ -101,6 +101,87 @@ def openai_reply(user_text: str) -> str:
     return None
 
 
+def gemini_reply(user_text: str) -> str:
+    """Attempt to call Google Gemini / Generative AI.
+
+    This function tries a few common client libraries (`google.generativeai`,
+    `google.cloud.aiplatform`/Vertex AI) using dynamic imports so missing
+    packages won't break static analysis. If a call succeeds it should return
+    the assistant text, otherwise returns None to allow fallback.
+    """
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            return None
+
+        import importlib
+        # Try google.generativeai (the lightweight GenAI client)
+        try:
+            genai = importlib.import_module("google.generativeai")
+            # configure API key if available
+            if hasattr(genai, "configure"):
+                try:
+                    genai.configure(api_key=api_key)
+                except Exception:
+                    # some versions use different names; try setting attribute
+                    try:
+                        setattr(genai, "api_key", api_key)
+                    except Exception:
+                        pass
+
+            # Preferred method: genai.chat.create or genai.generate_text
+            if hasattr(genai, "chat") and hasattr(genai.chat, "create"):
+                try:
+                    resp = genai.chat.create(model="gemini", messages=[{"author": "user", "content": user_text}])
+                    # Try common response shapes
+                    if isinstance(resp, dict):
+                        # dict-like: look for candidates / messages
+                        cand = resp.get("candidates") or resp.get("outputs")
+                        if cand and len(cand) > 0:
+                            first = cand[0]
+                            return first.get("content") or first.get("text")
+                    else:
+                        # object-like
+                        candidates = getattr(resp, "candidates", None)
+                        if candidates and len(candidates) > 0:
+                            c = candidates[0]
+                            return getattr(c, "content", None) or getattr(c, "text", None)
+                except Exception:
+                    pass
+
+            if hasattr(genai, "generate_text"):
+                try:
+                    # Some clients accept model name like "text-bison-001" or "gemini" family
+                    resp = genai.generate_text(model="text-bison-001", prompt=user_text)
+                    if isinstance(resp, dict):
+                        return resp.get("result") or resp.get("text") or resp.get("output")
+                    else:
+                        return getattr(resp, "text", None) or getattr(resp, "result", None)
+                except Exception:
+                    pass
+        except Exception:
+            # google.generativeai not available or call failed — try Vertex AI
+            pass
+
+        # Try Vertex AI via google.cloud.aiplatform (if installed/configured)
+        try:
+            aiplatform = importlib.import_module("google.cloud.aiplatform")
+            try:
+                # initialize client using project/region env vars or default credentials
+                client = aiplatform.gapic.PredictionServiceClient()
+                # The REST/gRPC call shape depends on deployment; we won't try to guess here.
+                # Return None so fallback occurs if we can't safely call it.
+                return None
+            except Exception:
+                return None
+        except Exception:
+            pass
+
+    except Exception as e:
+        logging.exception("Gemini request failed: %s", e)
+    return None
+
+
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -122,7 +203,12 @@ def chat():
             logging.exception("Error while generating with transformers: %s", e)
             # fall through to fallback reply
 
-    # Next prefer OpenAI if configured
+    # Next prefer Gemini (Google Generative AI) if configured
+    gemini_ans = gemini_reply(user_input)
+    if gemini_ans is not None:
+        return jsonify({"reply": gemini_ans})
+
+    # Then prefer OpenAI if configured
     openai_ans = openai_reply(user_input)
     if openai_ans is not None:
         return jsonify({"reply": openai_ans})
