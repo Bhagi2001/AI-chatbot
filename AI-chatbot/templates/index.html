@@ -8,11 +8,34 @@
 </head>
 <body>
   <div class="chat-container">
-    <h2>🤖 Buddy - AI Chatbot</h2>
-    <div class="chat-box" id="chat-box"></div>
+    <header class="app-header">
+      <div class="logo">B</div>
+      <div>
+        <div class="app-title">Buddy</div>
+        <div class="app-sub">Friendly AI chat — local or cloud</div>
+      </div>
+      <div class="app-sub">Status: <span id="status">Ready</span></div>
+    </header>
+
+    <main class="chat-main">
+      <section class="chat-box" id="chat-box" aria-live="polite"></section>
+
+      <aside class="sidebar">
+        <h3>Tips</h3>
+        <p>Ask Buddy anything. If local models are unavailable, the app will fall back to cloud or a simple responder.</p>
+        <h3>Shortcuts</h3>
+        <p><strong>Enter</strong> — send · <strong>Shift+Enter</strong> — newline</p>
+      </aside>
+    </main>
+
     <div class="input-area">
-      <input type="text" id="user-input" placeholder="Type your message..." />
+      <input type="text" id="user-input" placeholder="Type your message... (press Enter to send)" />
       <button id="send-btn">Send</button>
+    </div>
+
+    <div class="footer">
+      <div>Built with Flask • Buddy Chat</div>
+      <div style="opacity:.8">Local: transformers · OpenAI · Gemini</div>
     </div>
   </div>
 
@@ -20,44 +43,69 @@
     const sendBtn = document.getElementById("send-btn");
     const userInput = document.getElementById("user-input");
     const chatBox = document.getElementById("chat-box");
+    const statusEl = document.getElementById("status");
 
-    async function sendMessage() {
-      const message = userInput.value.trim();
-      if (!message) return;
-
-        // Show user message
-        chatBox.innerHTML += `<div class="user-msg">🧑 You: ${message}</div>`;
-        userInput.value = "";
-
-        // Show a typing indicator from the bot while we wait
-        const typingId = `typing-${Date.now()}`;
-        chatBox.innerHTML += `<div class="bot-msg" id="${typingId}">🤖 Buddy: <em>typing...</em></div>`;
-        chatBox.scrollTop = chatBox.scrollHeight;
-        sendBtn.disabled = true;
-        userInput.disabled = true;
-
-        // Send to backend
-        const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message })
-        });
-
-        const data = await res.json();
-        const typingElem = document.getElementById(typingId);
-        if (typingElem) {
-          typingElem.outerHTML = `<div class="bot-msg">🤖 Buddy: ${data.reply}</div>`;
-        } else {
-          chatBox.innerHTML += `<div class="bot-msg">🤖 Buddy: ${data.reply}</div>`;
-        }
-        chatBox.scrollTop = chatBox.scrollHeight;
-        sendBtn.disabled = false;
-        userInput.disabled = false;
+    function appendMessage(role, text, opts = {}){
+      const msg = document.createElement('div');
+      msg.className = `message ${role}`;
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = role === 'user' ? 'You' : 'B';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if(opts.html){ bubble.innerHTML = text } else { bubble.textContent = text }
+      msg.appendChild(avatar);
+      msg.appendChild(bubble);
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return msg;
     }
 
-    sendBtn.addEventListener("click", sendMessage);
-    userInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendMessage();
+    function showTyping(){
+      const typing = document.createElement('div');
+      typing.className = 'message bot';
+      typing.id = 'typing-indicator';
+      const avatar = document.createElement('div'); avatar.className='avatar'; avatar.textContent='B';
+      const bubble = document.createElement('div'); bubble.className='bubble';
+      bubble.innerHTML = `<span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+      typing.appendChild(avatar); typing.appendChild(bubble);
+      chatBox.appendChild(typing);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function hideTyping(){
+      const el = document.getElementById('typing-indicator');
+      if(el) el.remove();
+    }
+
+    async function sendMessage(){
+      const message = userInput.value;
+      if(!message.trim()) return;
+      appendMessage('user', message);
+      userInput.value = '';
+      sendBtn.disabled = true; userInput.disabled = true; statusEl.textContent='Waiting...';
+      showTyping();
+
+      try{
+        const res = await fetch('/chat',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})
+        });
+        const data = await res.json();
+        hideTyping();
+        appendMessage('bot', data.reply, {html:false});
+        statusEl.textContent='Ready';
+      }catch(err){
+        hideTyping();
+        appendMessage('bot', 'Sorry, something went wrong.');
+        statusEl.textContent='Error';
+      }finally{
+        sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
     });
   </script>
 </body>
