@@ -190,6 +190,12 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     user_input = request.json.get("message", "")
+    sticker = request.json.get("sticker") if request.is_json else None
+
+    # If a sticker is sent, acknowledge it quickly (frontend already displays it)
+    if sticker:
+        # You could implement richer logic here (e.g., tag-based replies)
+        return jsonify({"reply": "Nice sticker!"})
 
     # Prefer transformers when available
     if init_chatbot():
