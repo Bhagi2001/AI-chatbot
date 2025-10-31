@@ -29,7 +29,39 @@
     </main>
 
     <div class="input-area">
-      <input type="text" id="user-input" placeholder="Type your message... (press Enter to send)" />
+      <div style="position:relative;display:flex;align-items:center;flex:1">
+        <div class="controls" style="margin-right:8px">
+          <button id="emoji-btn" class="emoji-btn" aria-label="Emoji">😊</button>
+          <button id="sticker-btn" class="sticker-btn" aria-label="Stickers">� stickers</button>
+        </div>
+        <input type="text" id="user-input" placeholder="Type your message... (press Enter to send)" />
+
+        <!-- Emoji picker -->
+        <div id="emoji-picker" class="picker grid" style="right:120px;bottom:60px;position:absolute;">
+          <!-- simple emoji set -->
+          <div class="emoji-cell">😀</div>
+          <div class="emoji-cell">😁</div>
+          <div class="emoji-cell">😂</div>
+          <div class="emoji-cell">😊</div>
+          <div class="emoji-cell">😉</div>
+          <div class="emoji-cell">😍</div>
+          <div class="emoji-cell">🤔</div>
+          <div class="emoji-cell">😮</div>
+          <div class="emoji-cell">😢</div>
+          <div class="emoji-cell">👍</div>
+          <div class="emoji-cell">🙏</div>
+          <div class="emoji-cell">🔥</div>
+        </div>
+
+        <!-- Sticker picker -->
+        <div id="sticker-picker" class="picker" style="right:10px;bottom:60px;position:absolute;width:320px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="sticker-cell" data-src="{{ url_for('static', filename='stickers/sticker1.svg') }}"><img src="{{ url_for('static', filename='stickers/sticker1.svg') }}" alt="sticker1"></div>
+            <div class="sticker-cell" data-src="{{ url_for('static', filename='stickers/sticker2.svg') }}"><img src="{{ url_for('static', filename='stickers/sticker2.svg') }}" alt="sticker2"></div>
+            <div class="sticker-cell" data-src="{{ url_for('static', filename='stickers/sticker3.svg') }}"><img src="{{ url_for('static', filename='stickers/sticker3.svg') }}" alt="sticker3"></div>
+          </div>
+        </div>
+      </div>
       <button id="send-btn">Send</button>
     </div>
 
@@ -107,6 +139,58 @@
     userInput.addEventListener('keydown', (e)=>{
       if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
     });
+
+    // Emoji & sticker picker logic
+    const emojiBtn = document.getElementById('emoji-btn');
+    const stickerBtn = document.getElementById('sticker-btn');
+    const emojiPicker = document.getElementById('emoji-picker');
+    const stickerPicker = document.getElementById('sticker-picker');
+
+    function toggle(el){ el.classList.toggle('open') }
+    function closeAllPickers(){ emojiPicker.classList.remove('open'); stickerPicker.classList.remove('open') }
+
+    emojiBtn.addEventListener('click', (e)=>{ e.stopPropagation(); stickerPicker.classList.remove('open'); emojiPicker.classList.toggle('open'); });
+    stickerBtn.addEventListener('click', (e)=>{ e.stopPropagation(); emojiPicker.classList.remove('open'); stickerPicker.classList.toggle('open'); });
+
+    // Insert emoji to input at caret
+    emojiPicker.querySelectorAll('.emoji-cell').forEach(cell=>{
+      cell.addEventListener('click', ()=>{
+        const emoji = cell.textContent;
+        const start = userInput.selectionStart || 0;
+        const end = userInput.selectionEnd || 0;
+        userInput.value = userInput.value.slice(0,start) + emoji + userInput.value.slice(end);
+        userInput.focus();
+        userInput.selectionStart = userInput.selectionEnd = start + emoji.length;
+        emojiPicker.classList.remove('open');
+      })
+    });
+
+    // Sticker click -> send sticker
+    stickerPicker.querySelectorAll('.sticker-cell').forEach(cell=>{
+      cell.addEventListener('click', async ()=>{
+        const src = cell.getAttribute('data-src');
+        // Append sticker in UI as user message
+        const msg = document.createElement('div'); msg.className='message user';
+        const av = document.createElement('div'); av.className='avatar'; av.textContent='You';
+        const bubble = document.createElement('div'); bubble.className='bubble';
+        bubble.innerHTML = `<img src="${src}" style="max-width:180px;display:block;border-radius:8px">`;
+        msg.appendChild(av); msg.appendChild(bubble); chatBox.appendChild(msg); chatBox.scrollTop = chatBox.scrollHeight;
+        stickerPicker.classList.remove('open');
+        // send to backend with sticker field
+        sendBtn.disabled = true; userInput.disabled = true; statusEl.textContent='Waiting...';
+        try{
+          const res = await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sticker: src})});
+          const data = await res.json();
+          appendMessage('bot', data.reply || 'Nice sticker!');
+          statusEl.textContent='Ready';
+        }catch(err){
+          appendMessage('bot','Sorry, something went wrong.'); statusEl.textContent='Error';
+        }finally{ sendBtn.disabled=false; userInput.disabled=false; userInput.focus(); }
+      })
+    });
+
+    // click outside to close pickers
+    document.addEventListener('click', (e)=>{ if(!emojiPicker.contains(e.target) && !emojiBtn.contains(e.target)) emojiPicker.classList.remove('open'); if(!stickerPicker.contains(e.target) && !stickerBtn.contains(e.target)) stickerPicker.classList.remove('open'); });
   </script>
 </body>
 </html>
